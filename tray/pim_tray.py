@@ -58,6 +58,7 @@ state = {
     "paused": False,
     "unread": 0,
     "blink_on": False,
+    "recent": [],   # 最近消息 dict 列表, 供悬浮 tooltip 展示
 }
 state_lock = threading.Lock()
 
@@ -108,10 +109,36 @@ def make_icon():
 icon_lock = threading.Lock()
 
 
+def _clip(s, n):
+    """单行截断并压平换行(Windows tooltip 上限约 127 字符)"""
+    s = (s or "").replace("\r", " ").replace("\n", " ").strip()
+    return s if len(s) <= n else s[: max(n - 1, 1)] + "…"
+
+
+def build_tooltip():
+    """悬浮提示: 状态 + 未读数 + 最近几条消息摘要(QQ 式)"""
+    with state_lock:
+        connected, paused = state["connected"], state["paused"]
+        unread = state["unread"]
+        recent = list(state["recent"])
+    status = "已暂停" if paused else ("已连接" if connected else "连接断开, 重试中…")
+    head = "pim 消息提醒 (%s)" % status
+    if not unread:
+        return head
+    lines = ["%s | 未读 %d 条:" % (head, unread)]
+    for m in recent[-3:]:
+        who = _clip(m.get("title") or "", 12)
+        app = _clip(m.get("app") or "", 8)
+        body = _clip(m.get("body") or "", 18)
+        lines.append("%s %s: %s" % (app, who, body))
+    return "\n".join(_clip(l, 40) for l in lines)[:126]
+
+
 def refresh_icon(icon):
     try:
         with icon_lock:
             icon.icon = make_icon()
+            icon.tooltip = build_tooltip()
     except Exception:
         pass
 
@@ -184,6 +211,10 @@ def build_menu():
 def handle(m, is_backlog):
     with state_lock:
         paused = state["paused"]
+        rec = state["recent"]
+        rec.append({"app": m.get("app") or "", "title": m.get("title") or "",
+                    "body": m.get("body") or "", "ts": m.get("ts") or ""})
+        del rec[:-10]
     if is_backlog:
         # 历史消息: 只累计未读, 不弹窗(与网页端一致)
         if not paused:
