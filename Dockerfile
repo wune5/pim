@@ -40,7 +40,9 @@ RUN patchelf --clear-execstack /opt/apps/com.alibabainc.dingtalk/files/*/dingtal
 
 # 桌面页面注入 IM 通知脚本(/notify/inject.js): 桌面原生打开无 iframe 开销,
 # 页面内直接叠加 toast/系统通知, 由 /notify/ 路由(Caddy)转发到通知中继
-RUN sed -i 's|</body></html>|<script src="/notify/inject.js" defer></script></body></html>|' /usr/share/selkies/web/index.html
+# Selkies 默认 60fps 软编全屏扛不住(CPU 延迟堆积报"网络连接不佳"), 降到 30fps
+RUN sed -i 's|</body></html>|<script src="/notify/inject.js" defer></script></body></html>|' /usr/share/selkies/web/index.html \
+    && sed -i 's|--addr="localhost"|--addr="localhost" --framerate="30"|' /etc/s6-overlay/s6-rc.d/svc-selkies/run
 
 # 启动时修复宿主机映射目录属主：bind mount 会保留宿主机 root 属主，
 # 而容器内应用以 abc 用户运行，QQ 会报"检测到当前存储路径不可访问"
