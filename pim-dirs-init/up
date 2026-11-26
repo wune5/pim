@@ -5,4 +5,10 @@ mkdir -p /config/Documents /config/Downloads /config/Pictures
 chown abc:abc /config/Documents /config/Downloads /config/Pictures
 mkdir -p /config/Documents/Tencent\ Files
 chown abc:abc /config/Documents/Tencent\ Files
+# KDE 界面语言: 简体中文(用户配置目录是挂载卷, 只能启动时写入)
+if [ ! -f /config/.config/plasma-localerc ]; then
+  mkdir -p /config/.config
+  printf '[Locale]\nLanguage=zh_CN\n\n[Formats]\nLANG=zh_CN.UTF-8\nLC_TIME=zh_CN.UTF-8\n' > /config/.config/plasma-localerc
+  chown abc:abc /config/.config/plasma-localerc
+fi
 exit 0

@@ -12,9 +12,16 @@ ARG QQ_URL_ARM64=https://qqdl.gtimg.cn/qqfile/QQNT/9.9.37/beta/816b3c79/linuxqq_
 ARG DINGTALK_URL_AMD64=https://dtapp-pub.dingtalk.com/dingtalk-desktop/xc_dingtalk_update/linux_deb/Release/com.alibabainc.dingtalk_7.8.15.5092302_amd64.deb
 ARG DINGTALK_URL_ARM64=https://dtapp-pub.dingtalk.com/dingtalk-desktop/xc_dingtalk_update/linux_deb/Release/com.alibabainc.dingtalk_7.8.15.5092302_arm64.deb
 
+# 系统语言: 简体中文(桌面 KDE 界面翻译 + locale + 环境变量)
+ENV LANG=zh_CN.UTF-8 \
+    LANGUAGE=zh_CN:zh \
+    LC_ALL=zh_CN.UTF-8
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl fonts-noto-cjk patchelf libpulse-mainloop-glib0 \
-    && rm -rf /var/lib/apt/lists/*
+       language-pack-zh-hans language-pack-kde-zh-hans \
+    && rm -rf /var/lib/apt/lists/* \
+    && locale-gen zh_CN.UTF-8
 
 # 按 TARGETARCH 选择对应架构的 deb 并安装
 RUN case "$TARGETARCH" in \
