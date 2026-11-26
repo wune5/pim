@@ -21,6 +21,7 @@ IM 通知中继：监听 Linux 桌面通知(DBus) -> 浏览器页面实时推送
     - QQ/微信客户端需开启"消息通知"选项
     - 无第三方 Python 依赖, 仅用标准库
 """
+import glob
 import json
 import os
 import re
@@ -73,7 +74,8 @@ _last = {"key": "", "ts": 0.0}
 
 
 def handle_notify(strings):
-    # Notify 参数顺序: app_name, replaces_id, app_icon, summary, body, ...
+    # Notify 参数顺序: app_name, app_icon, summary, body (均为 string,
+    # 中间的 replaces_id 是 uint32, 在收集时被跳过)
     if len(strings) < 4:
         return
     app, summary, body = strings[0], strings[2], strings[3]
@@ -108,34 +110,81 @@ def handle_notify(strings):
             print("ntfy 转发失败:", e)
 
 
+def find_session_bus():
+    """自动发现桌面会话总线: 遍历 /tmp/dbus-* socket,
+    挑"通知守护进程所在 + 服务名最多"的那个 —— 桌面会话总线服务名
+    几十个, 无意中 autolaunch 出来的野总线只有几个, 以此区分。
+    webtop 容器重启后 socket 名会变, autostart 环境也不一定带全, 靠这个自愈。"""
+    best, best_names = None, -1
+    for path in sorted(glob.glob("/tmp/dbus-*")):
+        addr = "unix:path=" + path
+        env = dict(os.environ, DBUS_SESSION_BUS_ADDRESS=addr)
+        # 注意: 不能用 dbus-send --address= 参数(该版本有未注册就发消息的
+        # bug), 必须用 DBUS_SESSION_BUS_ADDRESS 环境变量传入
+        try:
+            r = subprocess.run(
+                ["dbus-send", "--print-reply",
+                 "--dest=org.freedesktop.DBus", "/",
+                 "org.freedesktop.DBus.GetNameOwner",
+                 "string:org.freedesktop.Notifications"],
+                capture_output=True, timeout=5, env=env)
+            if r.returncode != 0:
+                continue  # 没有通知守护进程, 不是桌面会话总线
+            n = subprocess.run(
+                ["dbus-send", "--print-reply",
+                 "--dest=org.freedesktop.DBus", "/",
+                 "org.freedesktop.DBus.ListNames"],
+                capture_output=True, timeout=5, env=env)
+            count = n.stdout.count(b'string "')
+            print(f"[bus] {path}: 通知服务在, 服务名 {count} 个", flush=True)
+            if count > best_names:
+                best, best_names = addr, count
+        except Exception as e:
+            print(f"[bus] {path}: 探测异常 {e}", flush=True)
+    if best:
+        return best
+    return None
+
+
 def dbus_loop():
     """监听 session bus 上的 org.freedesktop.Notifications.Notify 调用"""
-    cmd = ["dbus-monitor", "--session",
-           "interface='org.freedesktop.Notifications',member='Notify'"]
+    # 不用 match 规则: dbus-monitor 新版解析器对带引号规则语法兼容性差,
+    # 裸监听全量事件后由下方解析器按 member=Notify 过滤, 实测最稳
+    cmd = ["dbus-monitor", "--session"]
     while True:
         try:
+            addr = find_session_bus() or os.environ.get("DBUS_SESSION_BUS_ADDRESS")
+            if not addr:
+                print("未找到会话总线, 5 秒后重试 ...", flush=True)
+                time.sleep(5)
+                continue
+            print("监听总线:", addr, flush=True)
+            env = dict(os.environ, DBUS_SESSION_BUS_ADDRESS=addr)
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                     stderr=subprocess.DEVNULL, text=True,
-                                    errors="replace")
+                                    errors="replace", env=env)
             collecting = False
             strings = []
             for line in proc.stdout:
                 s = line.rstrip("\n")
-                if "member=Notify" in s:
+                if "member=Notify" in s and s.startswith("method call "):
                     collecting = True
                     strings = []
                     continue
-                if collecting:
-                    m = STRING_RE.match(s)
-                    if m:
-                        strings.append(unescape(m.group(1)))
-                        continue
-                    # 遇到第一个非 string 参数(如 uint32/array)即收集结束
-                    collecting = False
-                    handle_notify(strings)
+                if not collecting:
+                    continue
+                m = STRING_RE.match(s)
+                if m:
+                    strings.append(unescape(m.group(1)))
+                    if len(strings) == 4:
+                        # Notify 前 4 个 string 依次是:
+                        # app_name, app_icon, summary, body
+                        collecting = False
+                        handle_notify(strings)
+                        strings = []
         except Exception as e:
             print("dbus-monitor 异常:", e)
-        print("3 秒后重连 dbus-monitor ...")
+        print("3 秒后重连 dbus-monitor ...", flush=True)
         time.sleep(3)
 
 
