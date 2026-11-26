@@ -52,7 +52,12 @@ COPY pim-dirs-init/up /etc/s6-overlay/s6-rc.d/pim-dirs-init/up
 RUN chmod +x /etc/s6-overlay/s6-rc.d/pim-dirs-init/up \
     && echo "pim-dirs-init" >> /etc/s6-overlay/s6-rc.d/user/contents.d
 
-# 通知中继：监听桌面通知 -> 浏览器页面推送（SSE，:8787）
+# 通知中继：监听桌面通知 -> 浏览器页面推送（SSE）
+# 注册为 s6 longrun 常驻服务(以 abc 运行, 崩溃自动拉起), 不走桌面 autostart
+# —— 桌面是懒初始化, 无人连接时会话整体不在, autostart 版会跟着死导致 /relay/ 502
 COPY notify_relay.py /opt/notify_relay.py
-RUN printf '[Desktop Entry]\nType=Application\nName=notify-relay\nComment=IM desktop notification relay\nExec=/lsiopy/bin/python3 /opt/notify_relay.py\nTerminal=false\nX-GNOME-Autostart-enabled=true\n' > /etc/xdg/autostart/notify-relay.desktop \
+COPY relay-service/type /etc/s6-overlay/s6-rc.d/relay-service/type
+COPY relay-service/run /etc/s6-overlay/s6-rc.d/relay-service/run
+RUN chmod +x /etc/s6-overlay/s6-rc.d/relay-service/run \
+    && echo "relay-service" >> /etc/s6-overlay/s6-rc.d/user/contents.d \
     && printf '[Desktop Entry]\nType=Application\nName=notify-relay\nExec=python3 /opt/notify_relay.py\nTerminal=false\n' > /usr/share/applications/notify-relay.desktop

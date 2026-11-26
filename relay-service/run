@@ -1,0 +1,5 @@
+#!/usr/bin/with-contenv bash
+# 常驻通知中继: 不依赖桌面会话(桌面懒初始化时 autostart 版会随会话生死,
+# 导致没人连桌面时 /relay/ 502)。总线由 find_session_bus 自动发现, 桌面
+# 起来后 5 秒内自动接上。
+exec s6-setuidgid abc /lsiopy/bin/python3 /opt/notify_relay.py
