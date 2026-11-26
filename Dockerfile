@@ -49,15 +49,18 @@ RUN patchelf --clear-execstack /opt/apps/com.alibabainc.dingtalk/files/*/dingtal
 # 页面内直接叠加 toast/系统通知, 由 /notify/ 路由(Caddy)转发到通知中继
 # Selkies 默认 60fps 软编全屏扛不住(CPU 延迟堆积报"网络连接不佳"); 帧率用
 # "30-30" 范围语法锁死 —— 单值 30 只作初始值会被浏览器端设置覆盖
-RUN sed -i 's|</body></html>|<script src="/notify/inject.js" defer></script></body></html>|' /usr/share/selkies/web/index.html \
+# index.html 位置随 selkies 版本变化(旧版 /usr/share/selkies/web, 新版 pip 包内), 动态查找
+RUN f=$(find /usr/share/selkies /lsiopy -name index.html -path "*selkies_web*" 2>/dev/null | head -1) \
+    && sed -i 's|</body></html>|<script src="/notify/inject.js" defer></script></body></html>|' "$f" \
     && sed -i 's|--addr="localhost"|--addr="localhost" --framerate="30-30"|' /etc/s6-overlay/s6-rc.d/svc-selkies/run
 
 # 启动时修复宿主机映射目录属主：bind mount 会保留宿主机 root 属主，
 # 而容器内应用以 abc 用户运行，QQ 会报"检测到当前存储路径不可访问"
 COPY pim-dirs-init/type /etc/s6-overlay/s6-rc.d/pim-dirs-init/type
 COPY pim-dirs-init/up /etc/s6-overlay/s6-rc.d/pim-dirs-init/up
+# contents.d 兼容两种结构: 旧版是单文件(追加服务名), 新版是目录(每服务一个空文件)
 RUN chmod +x /etc/s6-overlay/s6-rc.d/pim-dirs-init/up \
-    && echo "pim-dirs-init" >> /etc/s6-overlay/s6-rc.d/user/contents.d
+    && if [ -d /etc/s6-overlay/s6-rc.d/user/contents.d ]; then : > /etc/s6-overlay/s6-rc.d/user/contents.d/pim-dirs-init; else echo "pim-dirs-init" >> /etc/s6-overlay/s6-rc.d/user/contents.d; fi
 
 # 通知中继：监听桌面通知 -> 浏览器页面推送（SSE）
 # 注册为 s6 longrun 常驻服务(以 abc 运行, 崩溃自动拉起), 不走桌面 autostart
@@ -66,5 +69,5 @@ COPY notify_relay.py /opt/notify_relay.py
 COPY relay-service/type /etc/s6-overlay/s6-rc.d/relay-service/type
 COPY relay-service/run /etc/s6-overlay/s6-rc.d/relay-service/run
 RUN chmod +x /etc/s6-overlay/s6-rc.d/relay-service/run \
-    && echo "relay-service" >> /etc/s6-overlay/s6-rc.d/user/contents.d \
+    && if [ -d /etc/s6-overlay/s6-rc.d/user/contents.d ]; then : > /etc/s6-overlay/s6-rc.d/user/contents.d/relay-service; else echo "relay-service" >> /etc/s6-overlay/s6-rc.d/user/contents.d; fi \
     && printf '[Desktop Entry]\nType=Application\nName=notify-relay\nExec=python3 /opt/notify_relay.py\nTerminal=false\n' > /usr/share/applications/notify-relay.desktop
