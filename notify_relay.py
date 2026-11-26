@@ -286,12 +286,15 @@ connect();
 
 
 # 注入到 Selkies 桌面页面的通知脚本(由 Dockerfile sed 写入 index.html)。
-# 不再用 iframe 包桌面 —— 桌面原生打开, 零性能开销, 通知层直接叠在桌面上。
+# 桌面原生打开零开销; 通知面板作为侧栏 section 注入(跟随 Selkies 主题),
+# 右下角 toast + 系统弹窗 + 侧栏消息列表三路呈现。
 INJECT_JS = """(function(){
 if(window.__PIM_NOTIFY__)return;window.__PIM_NOTIFY__=1;
 const css=document.createElement('style');
 css.textContent=`#pim-dot{position:fixed;left:10px;bottom:10px;z-index:2147483000;width:12px;height:12px;border-radius:50%;background:#666;border:2px solid rgba(0,0,0,.35);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 #pim-dot.on{background:#22c55e}#pim-dot.off{background:#ef4444}
+#pim-dot::after{content:attr(data-unread);position:absolute;top:-7px;right:-7px;display:none;background:#ef4444;color:#fff;font-size:10px;line-height:1;padding:3px 5px;border-radius:8px;font-weight:700}
+#pim-dot[data-unread]:not([data-unread="0"])::after{display:block}
 #pim-ask{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:10px;background:#fff;border:1px solid #e3e5e8;border-radius:10px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:14px;color:#333}
 #pim-ask button{border:0;background:#2563eb;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px}
 #pim-ask .x{cursor:pointer;color:#999;font-size:16px;padding:0 2px}
@@ -302,23 +305,18 @@ css.textContent=`#pim-dot{position:fixed;left:10px;bottom:10px;z-index:214748300
 .pim-toast .title{font-weight:600;color:#222}
 .pim-toast .body{font-size:13px;color:#444;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:hidden}
 @keyframes pim-slide{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
-#pim-panel{position:fixed;left:0;bottom:0;z-index:2147483001;display:none;width:340px;max-height:60vh;overflow-y:auto;background:#fff;border-top:1px solid #e3e5e8;border-right:1px solid #e3e5e8;border-radius:0 12px 0 0;box-shadow:0 4px 16px rgba(0,0,0,.2)}
-#pim-panel h2{font-size:14px;margin:0;padding:10px 14px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;color:#333}
-#pim-panel h2 span.x{cursor:pointer;color:#999;font-size:16px}
-#pim-panel .msg{padding:8px 14px;border-bottom:1px solid #f2f3f5;font-size:13px}
-#pim-panel .meta{font-size:12px;color:#888;margin-bottom:2px}
-#pim-panel .app{background:#eef1ff;color:#4152d8;border-radius:4px;padding:1px 6px;margin-right:8px}
-#pim-panel .title{font-weight:600;color:#222}
-#pim-panel .body{color:#444;white-space:pre-wrap;word-break:break-all}`;
+#pim-sec-content{max-height:320px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--sk-surface)}
+.pim-msg{background:var(--sk-surface-alt);border:1px solid var(--sk-border-soft);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--sk-text)}
+.pim-msg .meta{font-size:11px;color:var(--sk-text-muted);display:flex;justify-content:space-between;gap:8px;margin-bottom:2px}
+.pim-msg .app{background:var(--sk-accent-soft);color:var(--sk-accent-text);border-radius:4px;padding:1px 6px;margin-right:8px}
+.pim-msg .title{font-weight:600}
+.pim-msg .body{white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden}
+#pim-sec-badge{background:#ef4444;color:#fff;font-size:11px;line-height:1;padding:3px 7px;border-radius:8px;font-weight:700;display:none}
+#pim-sec-badge[data-n="0"]{display:none}
+.pim-empty{color:var(--sk-text-muted);font-size:12px;text-align:center;padding:6px 0}`;
 document.head.appendChild(css);
-const dot=document.createElement('span');dot.id='pim-dot';dot.className='off';dot.title='IM 通知连接状态, 点击查看最近消息';document.body.appendChild(dot);
+const dot=document.createElement('span');dot.id='pim-dot';dot.className='off';dot.title='IM 通知连接状态';dot.dataset.unread='0';document.body.appendChild(dot);
 const toasts=document.createElement('div');toasts.id='pim-toasts';document.body.appendChild(toasts);
-const panel=document.createElement('div');panel.id='pim-panel';
-panel.innerHTML='<h2>最近消息<span class="x">✕</span></h2><div id="pim-plist"></div>';
-document.body.appendChild(panel);
-const plist=panel.querySelector('#pim-plist');
-dot.onclick=()=>panel.style.display=panel.style.display==='block'?'none':'block';
-panel.querySelector('.x').onclick=()=>panel.style.display='none';
 const ask=document.createElement('div');ask.id='pim-ask';
 ask.innerHTML='<span>开启桌面通知, 收到新消息时系统弹窗提醒</span><button>开启</button><span class="x">✕</span>';
 document.body.appendChild(ask);
@@ -328,16 +326,44 @@ askBtn.onclick=async()=>{try{await Notification.requestPermission()}catch(e){}re
 ask.querySelector('.x').onclick=()=>ask.style.display='none';
 refreshAsk();
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
+// ---- 侧栏面板: 等待 Selkies .sidebar 出现后注入一个 section ----
+let secList=null,secBadge=null,unread=0;
+function buildMsg(m){
+  const el=document.createElement('div');el.className='pim-msg';
+  el.innerHTML='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div><div class="body">'+esc(m.body)+'</div>';
+  return el;
+}
+function injectSidebar(){
+  const bar=document.querySelector('.sidebar');
+  if(!bar||bar.querySelector('#pim-sec'))return;
+  const sec=document.createElement('div');sec.className='sidebar-section';sec.id='pim-sec';
+  sec.innerHTML='<div class="sidebar-section-header" id="pim-sec-head" aria-expanded="true"><h3>IM 消息提醒</h3><span id="pim-sec-badge" data-n="0">0</span></div><div class="sidebar-section-content" id="pim-sec-content"><div class="pim-empty">暂无消息, 等待推送…</div></div>';
+  bar.appendChild(sec);
+  secList=sec.querySelector('#pim-sec-content');
+  secBadge=sec.querySelector('#pim-sec-badge');
+  sec.querySelector('#pim-sec-head').onclick=()=>{
+    const open=sec.querySelector('#pim-sec-head').getAttribute('aria-expanded')==='true';
+    sec.querySelector('#pim-sec-head').setAttribute('aria-expanded',open?'false':'true');
+    secList.style.display=open?'none':'flex';
+    if(!open){unread=0;dot.dataset.unread='0';secBadge.dataset.n='0'}
+  };
+  backlog.forEach(m=>{const first=secList.querySelector('.pim-empty');if(first)first.remove();secList.appendChild(buildMsg(m))});
+}
+// React 可能重渲染侧栏, 被移除时重新插入
+const mo=new MutationObserver(()=>injectSidebar());
+function startWatch(){mo.observe(document.body,{childList:true,subtree:true});injectSidebar()}
+// ---- toast / 系统通知 / 未读计数 ----
 let first=true;
+const backlog=[];
 function add(m){
-  const meta='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div>';
-  if(first){
-    const el=document.createElement('div');el.className='msg';
-    el.innerHTML=meta+'<div class="body">'+esc(m.body)+'</div>';
-    plist.prepend(el);return;
-  }
+  backlog.push(m);if(backlog.length>100)backlog.shift();
+  if(secList){const e=secList.querySelector('.pim-empty');if(e)e.remove();secList.prepend(buildMsg(m));
+    while(secList.children.length>50)secList.lastChild.remove();}
+  if(first){refreshAsk();return}
+  unread++;dot.dataset.unread=unread;
+  if(secBadge){secBadge.dataset.n=unread;secBadge.textContent=unread}
   const el=document.createElement('div');el.className='pim-toast';
-  el.innerHTML=meta+'<div class="body">'+esc(m.body)+'</div>';
+  el.innerHTML='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div><div class="body">'+esc(m.body)+'</div>';
   el.onclick=()=>el.remove();
   toasts.appendChild(el);
   setTimeout(()=>el.remove(),8000);
@@ -351,6 +377,7 @@ function connect(){
   es.onerror=()=>{dot.className='off';es.close();setTimeout(connect,3000)};
   es.onmessage=e=>{add(JSON.parse(e.data));first=false};
 }
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startWatch);else startWatch();
 connect();
 })();"""
 
