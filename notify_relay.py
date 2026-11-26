@@ -207,58 +207,79 @@ def dbus_loop():
 
 
 PAGE = """<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
-<title>IM 消息推送</title>
+<title>pim - IM 桌面</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
- body{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;margin:0;background:#f5f6f8;color:#222}
- header{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-bottom:1px solid #e3e5e8}
- #dot{width:10px;height:10px;border-radius:50%;background:#ccc;flex:none}
+ html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:#111}
+ #desk{position:fixed;inset:0;width:100%;height:100%;border:0;display:block}
+ /* 左下角连接状态点: 绿=SSE在线 红=断开, 点击查看最近消息 */
+ #dot{position:fixed;left:10px;bottom:10px;z-index:50;width:12px;height:12px;border-radius:50%;background:#666;border:2px solid rgba(0,0,0,.35);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4)}
  #dot.on{background:#22c55e}#dot.off{background:#ef4444}
- h1{font-size:16px;margin:0;flex:1}
- button{border:1px solid #d0d3d8;background:#fff;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:13px}
- main{max-width:640px;margin:0 auto;padding:12px}
- .msg{background:#fff;border:1px solid #e3e5e8;border-radius:10px;padding:10px 14px;margin-bottom:10px;animation:fade .2s}
- .meta{font-size:12px;color:#888;display:flex;justify-content:space-between;gap:8px;margin-bottom:4px}
- .app{background:#eef1ff;color:#4152d8;border-radius:4px;padding:1px 8px;margin-right:8px}
- .title{font-weight:600}
- .body{white-space:pre-wrap;word-break:break-all}
- @keyframes fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}
- .empty{color:#999;text-align:center;padding:40px 0}
+ /* 通知权限开启横幅 */
+ #ask{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:60;display:none;align-items:center;gap:10px;background:#fff;border:1px solid #e3e5e8;border-radius:10px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,.15);font-size:14px;color:#333}
+ #ask button{border:0;background:#2563eb;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px}
+ #ask .x{cursor:pointer;color:#999;font-size:16px;padding:0 2px}
+ /* 右下角通知弹层 */
+ #toasts{position:fixed;right:14px;bottom:14px;z-index:55;display:flex;flex-direction:column;gap:8px;max-width:360px}
+ .toast{background:#fff;border:1px solid #e3e5e8;border-radius:10px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,.18);animation:slide .18s;cursor:pointer}
+ .toast .meta{font-size:12px;color:#888;display:flex;justify-content:space-between;gap:8px;margin-bottom:3px}
+ .toast .app{background:#eef1ff;color:#4152d8;border-radius:4px;padding:1px 8px;margin-right:8px}
+ .toast .title{font-weight:600;color:#222}
+ .toast .body{font-size:13px;color:#444;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:hidden}
+ @keyframes slide{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
+ /* 最近消息面板 */
+ #panel{position:fixed;left:0;bottom:0;z-index:60;display:none;width:340px;max-height:60vh;overflow-y:auto;background:#fff;border-top:1px solid #e3e5e8;border-right:1px solid #e3e5e8;border-radius:0 12px 0 0;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+ #panel h2{font-size:14px;margin:0;padding:10px 14px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;color:#333}
+ #panel h2 span.x{cursor:pointer;color:#999;font-size:16px}
+ #panel .msg{padding:8px 14px;border-bottom:1px solid #f2f3f5;font-size:13px}
+ #panel .meta{font-size:12px;color:#888;margin-bottom:2px}
+ #panel .app{background:#eef1ff;color:#4152d8;border-radius:4px;padding:1px 6px;margin-right:8px}
+ #panel .title{font-weight:600;color:#222}
+ #panel .body{color:#444;white-space:pre-wrap;word-break:break-all}
 </style></head><body>
-<header><span id="dot" class="off"></span><h1>IM 消息推送</h1>
-<button id="enable">开启浏览器通知</button><button id="clear">清空</button></header>
-<main id="list"><div class="empty">等待消息…（可用 notify-send "微信" "测试" 验证）</div></main>
+<iframe id="desk" title="桌面" src="about:blank" allow="clipboard-read; clipboard-write; fullscreen"></iframe>
+<span id="dot" class="off" title="通知连接状态, 点击查看最近消息"></span>
+<div id="ask"><span>开启桌面通知, 收到新消息时系统弹窗提醒</span><button id="askbtn">开启</button><span class="x" id="askx">✕</span></div>
+<div id="toasts"></div>
+<div id="panel"><h2>最近消息<span class="x" id="px">✕</span></h2><div id="plist"></div></div>
 <script>
-const list=document.getElementById('list'),dot=document.getElementById('dot');
-const empty=list.innerHTML;
+const dot=document.getElementById('dot'),desk=document.getElementById('desk');
+const toasts=document.getElementById('toasts'),panel=document.getElementById('panel'),plist=document.getElementById('plist');
+// 经 caddy 的 /relay/ 打开时嵌同源桌面; 直连 relay(8443/8787 根路径)时嵌统一入口桌面
+desk.src = /\\/relay\\/?$/.test(location.pathname) ? '/' : location.protocol+'//'+location.hostname+':3001/';
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
-function add(m){
-  if(list.querySelector('.empty'))list.innerHTML='';
-  const el=document.createElement('div');el.className='msg';
-  el.innerHTML='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div><div class="body">'+esc(m.body)+'</div>';
-  list.prepend(el);
-  if('Notification'in window&&Notification.permission==='granted'){
-    try{new Notification(m.title,{body:m.body})}catch(e){}
+let first=true;
+function show(m,alert){
+  const meta='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div>';
+  if(alert){
+    const el=document.createElement('div');el.className='toast';
+    el.innerHTML=meta+'<div class="body">'+esc(m.body)+'</div>';
+    el.onclick=()=>el.remove();
+    toasts.appendChild(el);
+    setTimeout(()=>el.remove(),8000);
+    if('Notification'in window&&Notification.permission==='granted'){
+      try{new Notification(m.title||m.app,{body:(m.app?'['+m.app+'] ':'')+(m.body||'')})}catch(e){}
+    }
+  }else{
+    const el=document.createElement('div');el.className='msg';
+    el.innerHTML=meta+'<div class="body">'+esc(m.body)+'</div>';
+    plist.prepend(el);
   }
 }
-document.getElementById('enable').onclick=()=>{
-  if(!window.isSecureContext){alert('当前是 HTTP 访问, 浏览器不允许弹系统通知。\\n请改用 https://'+location.hostname+':8443 访问(首次打开点"高级→继续前往")。');return}
-  Notification.requestPermission();
-};
-if(!window.isSecureContext){
-  const tip=document.createElement('div');
-  tip.style.cssText='background:#fef3c7;color:#92400e;border:1px solid #fbbf24;border-radius:8px;padding:8px 12px;margin:0 12px;font-size:13px';
-  tip.textContent='提示: HTTP 页面只能看消息列表, 不能弹系统通知。要弹窗请用 https://'+location.hostname+':8443 访问。';
-  const main=document.querySelector('main');
-  main.parentNode.insertBefore(tip,main);
-}
-document.getElementById('clear').onclick=()=>list.innerHTML=empty;
+function add(m){show(m,!first)}
+dot.onclick=()=>panel.style.display=panel.style.display==='block'?'none':'block';
+document.getElementById('px').onclick=()=>panel.style.display='none';
+const ask=document.getElementById('ask');
+function refreshAsk(){ask.style.display=('Notification'in window&&Notification.permission==='default')?'flex':'none'}
+document.getElementById('askbtn').onclick=async()=>{try{await Notification.requestPermission()}catch(e){}refreshAsk()};
+document.getElementById('askx').onclick=()=>ask.style.display='none';
+refreshAsk();
 function connect(){
   // 相对路径: 直连时解析为 /events, 经反代挂在 /relay/ 下时解析为 /relay/events
   const es=new EventSource('events');
   es.onopen=()=>dot.className='on';
   es.onerror=()=>{dot.className='off';es.close();setTimeout(connect,3000)};
-  es.onmessage=e=>add(JSON.parse(e.data));
+  es.onmessage=e=>{add(JSON.parse(e.data));first=false};
 }
 connect();
 </script></body></html>"""
