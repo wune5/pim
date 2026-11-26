@@ -11,7 +11,11 @@ services:
       - TZ=Asia/Shanghai
       - PORT=8787          # 通知中继端口
     volumes:
-      - ./data:/config     # 登录态/聊天数据持久化
+      - ./data:/config               # 登录态/聊天数据持久化
+      # 宿主机文件夹映射（和容器内互通，方便传文件；目录需存在且属主为 PUID 对应 uid）
+      - ./downloads:/config/Downloads
+      - ./documents:/config/Documents
+      - ./pictures:/config/Pictures
     ports:
       - "3000:3000"        # 桌面 HTTP（文本剪贴板可用）
       - "3001:3001"        # 桌面 HTTPS（贴图/文件传输需走此端口）

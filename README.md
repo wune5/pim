@@ -10,19 +10,73 @@ QQ/微信/钉钉 ──桌面通知──> DBus ──dbus-monitor──> notify
                                         └─ 可选 ─> ntfy ──> 手机 App
 ```
 
-## 快速开始
+## 部署步骤
+
+### 1. 准备目录与配置
 
 ```bash
-mkdir im-desktop && cd im-desktop
-# 保存 docker-compose.yml 后：
-docker compose up -d
+mkdir -p im-desktop/{data,downloads,documents,pictures}
+cd im-desktop
+curl -O https://raw.githubusercontent.com/wune5/pim/main/docker-compose.yml
 ```
 
-- 浏览器桌面：`http://IP:3000`（HTTP）或 `https://IP:3001`（HTTPS，**贴图/文件传输必须走这个**）
-- 消息推送页：`http://IP:8787`（页面开着实时刷新；点「开启浏览器通知」可弹系统通知）
-- 手机兜底：容器环境变量加 `NTFY_URL=https://ntfy.sh/你的私密topic`，ntfy App 订阅同 topic
+目录映射关系（compose 已配好）：
 
-首次启动后在桌面里打开 QQ/微信/钉钉扫码登录，数据落盘在 `./data`，重启不丢。
+| 宿主机目录 | 容器内路径 | 用途 |
+|---|---|---|
+| `./data` | `/config` | 登录态、聊天记录、整个桌面 HOME |
+| `./downloads` | `/config/Downloads` | 桌面「下载」文件夹，与宿主机互通 |
+| `./documents` | `/config/Documents` | 桌面「文档」文件夹 |
+| `./pictures` | `/config/Pictures` | 桌面「图片」文件夹 |
+
+> 文件夹映射是双向的：往宿主机 `./downloads` 放文件，容器桌面里立刻可见；
+> 微信里收到的文件存到 Downloads，宿主机直接就能取。注意宿主机目录属主
+> 需与 `PUID/PGID`（默认 1000）一致，否则容器内可能只读。
+
+### 2. 启动
+
+```bash
+docker compose up -d
+docker compose logs -f        # 观察启动，无报错后 Ctrl+C
+```
+
+需要手机推送时，在 compose 的 `environment` 里加一行
+`NTFY_URL=https://ntfy.sh/你的私密topic`（topic 名要随机，相当于密码）后
+`docker compose up -d` 重启。
+
+### 3. 登录客户端
+
+1. 浏览器打开 **`https://IP:3001`**（首次需接受自签名证书警告）
+2. 在桌面里依次打开 QQ / 微信 / 钉钉，手机扫码登录
+3. 三个客户端的设置里**开启「消息通知」**（关勿扰、群别静音），
+   否则中继收不到消息
+4. 登录态保存在 `./data`，容器重启无需重新扫码
+
+### 4. 收消息
+
+- 浏览器打开 `http://IP:8787`：页面开着就实时刷新新消息；
+  点一次「开启浏览器通知」还能弹系统级通知
+- 手机：ntfy App 订阅同一 topic（见上），页面不开也能收
+- 想回复消息：切回 `https://IP:3001` 桌面直接操作客户端
+
+### 5. 验证通知链路
+
+容器桌面终端里执行：
+
+```bash
+notify-send "微信" "张三: 测试消息"
+```
+
+`http://IP:8787` 页面立即出现这条即链路正常。收不到真实消息时，
+先检查客户端的通知开关，再看容器日志 `docker compose logs im-desktop`。
+
+### 6. 常用维护命令
+
+```bash
+docker compose pull && docker compose up -d   # 更新镜像（每周一自动出新版）
+docker compose restart im-desktop             # 重启
+tar czf data-backup.tgz data                  # 备份登录态
+```
 
 ## 客户端能力
 

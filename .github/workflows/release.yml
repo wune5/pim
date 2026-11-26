@@ -1,0 +1,24 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            多架构镜像已发布：`docker pull ghcr.io/wune5/pim:latest`
+
+            包含 QQ / 微信 / 钉钉 官方 Linux 客户端 + 桌面通知中继（浏览器消息推送）。
+
+            部署说明见仓库 [README](https://github.com/wune5/pim#部署步骤)。
