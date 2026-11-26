@@ -1,0 +1,110 @@
+name: build-image
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * 1"   # 每周一自动重建，跟进客户端更新
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  resolve-urls:
+    runs-on: ubuntu-latest
+    outputs:
+      wechat_amd64: ${{ steps.urls.outputs.wechat_amd64 }}
+      wechat_arm64: ${{ steps.urls.outputs.wechat_arm64 }}
+      qq_amd64: ${{ steps.urls.outputs.qq_amd64 }}
+      qq_arm64: ${{ steps.urls.outputs.qq_arm64 }}
+      dt_amd64: ${{ steps.urls.outputs.dt_amd64 }}
+      dt_arm64: ${{ steps.urls.outputs.dt_arm64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: urls
+        run: bash scripts/resolve-urls.sh
+
+  build:
+    needs: resolve-urls
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm   # 公开仓库免费的 arm64 原生 runner
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 计算镜像名（转小写）
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            WECHAT_URL_AMD64=${{ needs.resolve-urls.outputs.wechat_amd64 }}
+            WECHAT_URL_ARM64=${{ needs.resolve-urls.outputs.wechat_arm64 }}
+            QQ_URL_AMD64=${{ needs.resolve-urls.outputs.qq_amd64 }}
+            QQ_URL_ARM64=${{ needs.resolve-urls.outputs.qq_arm64 }}
+            DINGTALK_URL_AMD64=${{ needs.resolve-urls.outputs.dt_amd64 }}
+            DINGTALK_URL_ARM64=${{ needs.resolve-urls.outputs.dt_arm64 }}
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,scope=${{ matrix.platform }},mode=max
+
+      - name: 记录 digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.platform }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: 计算镜像名（转小写）
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 合并双架构 manifest 并打标签
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:latest" \
+            -t "$IMAGE:sha-${GITHUB_SHA::7}" \
+            $(printf "$IMAGE@sha256:%s " *)

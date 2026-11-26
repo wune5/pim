@@ -1,0 +1,20 @@
+services:
+  im-desktop:
+    # 拉取 GitHub Actions 构建好的镜像（推荐）
+    image: ghcr.io/wune5/im-desktop:latest
+    # 本地构建时注释上面一行，启用下面两行
+    # build: .
+    container_name: im-desktop
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - PORT=8787          # 通知中继端口
+    volumes:
+      - ./data:/config     # 登录态/聊天数据持久化
+    ports:
+      - "3000:3000"        # 桌面 HTTP（文本剪贴板可用）
+      - "3001:3001"        # 桌面 HTTPS（贴图/文件传输需走此端口）
+      - "8787:8787"        # 消息推送页面 http://IP:8787
+    shm_size: "2gb"        # QQ 是 Electron 应用，shm 太小会闪退
+    restart: unless-stopped

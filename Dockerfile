@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+# QQ / 微信 / 钉钉 桌面容器（amd64 + arm64），基于 LinuxServer webtop (Selkies)
+FROM lscr.io/linuxserver/webtop:ubuntu-kde
+
+ARG TARGETARCH
+
+# 三个客户端的 deb 下载地址（GitHub Actions 会用 scripts/resolve-urls.sh 解析最新版覆盖这些默认值）
+ARG WECHAT_URL_AMD64=https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb
+ARG WECHAT_URL_ARM64=https://dldir1v6.qq.com/weixin/Universal/Linux/WeChatLinux_arm64.deb
+ARG QQ_URL_AMD64=https://qqdl.gtimg.cn/qqfile/QQNT/9.9.37/beta/816b3c79/linuxqq_3.2.35-54395_amd64.deb
+ARG QQ_URL_ARM64=https://qqdl.gtimg.cn/qqfile/QQNT/9.9.37/beta/816b3c79/linuxqq_3.2.35-54395_arm64.deb
+ARG DINGTALK_URL_AMD64=https://dtapp-pub.dingtalk.com/dingtalk-desktop/xc_dingtalk_update/linux_deb/Release/com.alibabainc.dingtalk_7.8.15.5092302_amd64.deb
+ARG DINGTALK_URL_ARM64=https://dtapp-pub.dingtalk.com/dingtalk-desktop/xc_dingtalk_update/linux_deb/Release/com.alibabainc.dingtalk_7.8.15.5092302_arm64.deb
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
+# 按 TARGETARCH 选择对应架构的 deb 并安装
+RUN case "$TARGETARCH" in \
+      arm64) WECHAT_URL="$WECHAT_URL_ARM64"; QQ_URL="$QQ_URL_ARM64"; DT_URL="$DINGTALK_URL_ARM64" ;; \
+      *)     WECHAT_URL="$WECHAT_URL_AMD64"; QQ_URL="$QQ_URL_AMD64"; DT_URL="$DINGTALK_URL_AMD64" ;; \
+    esac \
+    && curl -fL --retry 3 --progress-bar "$WECHAT_URL" -o /tmp/wechat.deb \
+    && curl -fL --retry 3 --progress-bar "$QQ_URL" -o /tmp/qq.deb \
+    && curl -fL --retry 3 --progress-bar "$DT_URL" -o /tmp/dingtalk.deb \
+    && (dpkg -i /tmp/wechat.deb /tmp/qq.deb /tmp/dingtalk.deb || true) \
+    && (apt-get update && apt-get -f install -y) \
+    && rm -f /tmp/*.deb \
+    && rm -rf /var/lib/apt/lists/*
+
+# 通知中继：监听桌面通知 -> 浏览器页面推送（SSE，:8787）
+COPY notify_relay.py /opt/notify_relay.py
+RUN printf '[Desktop Entry]\nType=Application\nName=notify-relay\nComment=IM desktop notification relay\nExec=python3 /opt/notify_relay.py\nTerminal=false\nX-GNOME-Autostart-enabled=true\n' > /etc/xdg/autostart/notify-relay.desktop \
+    && printf '[Desktop Entry]\nType=Application\nName=notify-relay\nExec=python3 /opt/notify_relay.py\nTerminal=false\n' > /usr/share/applications/notify-relay.desktop
