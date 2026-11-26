@@ -242,7 +242,7 @@ function add(m){
   }
 }
 document.getElementById('enable').onclick=()=>{
-  if(!window.isSecureContext){alert('当前是 HTTP 访问, 浏览器不允许弹系统通知。\n请改用 https://'+location.hostname+':8443 访问(首次打开点"高级→继续前往")。');return}
+  if(!window.isSecureContext){alert('当前是 HTTP 访问, 浏览器不允许弹系统通知。\\n请改用 https://'+location.hostname+':8443 访问(首次打开点"高级→继续前往")。');return}
   Notification.requestPermission();
 };
 if(!window.isSecureContext){
@@ -296,8 +296,14 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
 
-    def log_message(self, *args):
-        pass
+    def log_message(self, fmt, *args):
+        # 访问日志落到 /tmp/relay.log, 便于排查浏览器端连接问题
+        try:
+            with open("/tmp/relay.log", "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now().strftime('%H:%M:%S')} {self.client_address[0]} "
+                        f"{self.command} {self.path} -> {args[1] if len(args) > 1 else ''}\n")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
