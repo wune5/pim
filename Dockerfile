@@ -13,7 +13,7 @@ ARG DINGTALK_URL_AMD64=https://dtapp-pub.dingtalk.com/dingtalk-desktop/xc_dingta
 ARG DINGTALK_URL_ARM64=https://dtapp-pub.dingtalk.com/dingtalk-desktop/xc_dingtalk_update/linux_deb/Release/com.alibabainc.dingtalk_7.8.15.5092302_arm64.deb
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl fonts-noto-cjk \
+    && apt-get install -y --no-install-recommends ca-certificates curl fonts-noto-cjk patchelf libpulse-mainloop-glib0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 按 TARGETARCH 选择对应架构的 deb 并安装
@@ -28,6 +28,15 @@ RUN case "$TARGETARCH" in \
     && (apt-get update && apt-get -f install -y) \
     && rm -f /tmp/*.deb \
     && rm -rf /var/lib/apt/lists/*
+
+# 容器内适配（实测 webtop ubuntu-kde 基础环境需要）：
+# 1) QQ 是 Electron 应用，容器内 SUID/用户命名空间沙箱不可用，必须 --no-sandbox
+# 2) 钉钉自带旧版 libm.so.6 会遮蔽系统 glibc(2.4x)，导致系统库加载失败，移除之
+# 3) 钉钉 dingtalk_dll.so 带可执行栈标志，内核拒绝加载，清除该标志
+# 4) 钉钉依赖 libpulse-mainloop-glib0（deb 里未声明）
+RUN patchelf --clear-execstack /opt/apps/com.alibabainc.dingtalk/files/*/dingtalk_dll.so \
+    && rm -f /opt/apps/com.alibabainc.dingtalk/files/*/libm.so.6 \
+    && sed -i 's|Exec=/opt/QQ/qq %U|Exec=/opt/QQ/qq --no-sandbox %U|' /usr/share/applications/qq.desktop
 
 # 通知中继：监听桌面通知 -> 浏览器页面推送（SSE，:8787）
 COPY notify_relay.py /opt/notify_relay.py
