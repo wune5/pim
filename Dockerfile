@@ -38,6 +38,13 @@ RUN patchelf --clear-execstack /opt/apps/com.alibabainc.dingtalk/files/*/dingtal
     && rm -f /opt/apps/com.alibabainc.dingtalk/files/*/libm.so.6 \
     && sed -i 's|Exec=/opt/QQ/qq %U|Exec=/opt/QQ/qq --no-sandbox %U|' /usr/share/applications/qq.desktop
 
+# 启动时修复宿主机映射目录属主：bind mount 会保留宿主机 root 属主，
+# 而容器内应用以 abc 用户运行，QQ 会报"检测到当前存储路径不可访问"
+COPY pim-dirs-init/type /etc/s6-overlay/s6-rc.d/pim-dirs-init/type
+COPY pim-dirs-init/up /etc/s6-overlay/s6-rc.d/pim-dirs-init/up
+RUN chmod +x /etc/s6-overlay/s6-rc.d/pim-dirs-init/up \
+    && echo "pim-dirs-init" >> /etc/s6-overlay/s6-rc.d/user/contents.d
+
 # 通知中继：监听桌面通知 -> 浏览器页面推送（SSE，:8787）
 COPY notify_relay.py /opt/notify_relay.py
 RUN printf '[Desktop Entry]\nType=Application\nName=notify-relay\nComment=IM desktop notification relay\nExec=/lsiopy/bin/python3 /opt/notify_relay.py\nTerminal=false\nX-GNOME-Autostart-enabled=true\n' > /etc/xdg/autostart/notify-relay.desktop \

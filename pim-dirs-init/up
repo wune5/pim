@@ -1,0 +1,8 @@
+#!/command/with-contenv bash
+# 宿主机映射目录（Documents/Downloads/Pictures）属主可能是 root，
+# 而应用以 abc 用户运行，QQ 会报"存储路径不可访问"。启动时统一修属主。
+mkdir -p /config/Documents /config/Downloads /config/Pictures
+chown abc:abc /config/Documents /config/Downloads /config/Pictures
+mkdir -p /config/Documents/Tencent\ Files
+chown abc:abc /config/Documents/Tencent\ Files
+exit 0
