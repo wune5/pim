@@ -291,11 +291,7 @@ connect();
 INJECT_JS = """(function(){
 if(window.__PIM_NOTIFY__)return;window.__PIM_NOTIFY__=1;
 const css=document.createElement('style');
-css.textContent=`#pim-dot{position:fixed;left:10px;bottom:10px;z-index:2147483000;width:12px;height:12px;border-radius:50%;background:#666;border:2px solid rgba(0,0,0,.35);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4)}
-#pim-dot.on{background:#22c55e}#pim-dot.off{background:#ef4444}
-#pim-dot::after{content:attr(data-unread);position:absolute;top:-7px;right:-7px;display:none;background:#ef4444;color:#fff;font-size:10px;line-height:1;padding:3px 5px;border-radius:8px;font-weight:700}
-#pim-dot[data-unread]:not([data-unread="0"])::after{display:block}
-#pim-ask{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:10px;background:#fff;border:1px solid #e3e5e8;border-radius:10px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:14px;color:#333}
+css.textContent=`#pim-ask{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:10px;background:#fff;border:1px solid #e3e5e8;border-radius:10px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:14px;color:#333}
 #pim-ask button{border:0;background:#2563eb;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px}
 #pim-ask .x{cursor:pointer;color:#999;font-size:16px;padding:0 2px}
 #pim-toasts{position:fixed;right:14px;bottom:14px;z-index:2147483000;display:flex;flex-direction:column;gap:8px;max-width:360px}
@@ -315,7 +311,6 @@ css.textContent=`#pim-dot{position:fixed;left:10px;bottom:10px;z-index:214748300
 #pim-sec-badge[data-n="0"]{display:none}
 .pim-empty{color:var(--sk-text-muted);font-size:12px;text-align:center;padding:6px 0}`;
 document.head.appendChild(css);
-const dot=document.createElement('span');dot.id='pim-dot';dot.className='off';dot.title='IM 通知连接状态';dot.dataset.unread='0';document.body.appendChild(dot);
 const toasts=document.createElement('div');toasts.id='pim-toasts';document.body.appendChild(toasts);
 const ask=document.createElement('div');ask.id='pim-ask';
 ask.innerHTML='<span>开启桌面通知, 收到新消息时系统弹窗提醒</span><button>开启</button><span class="x">✕</span>';
@@ -345,7 +340,7 @@ function injectSidebar(){
     const open=sec.querySelector('#pim-sec-head').getAttribute('aria-expanded')==='true';
     sec.querySelector('#pim-sec-head').setAttribute('aria-expanded',open?'false':'true');
     secList.style.display=open?'none':'flex';
-    if(!open){unread=0;dot.dataset.unread='0';secBadge.dataset.n='0'}
+    if(!open){unread=0;secBadge.dataset.n='0'}
   };
   backlog.forEach(m=>{const first=secList.querySelector('.pim-empty');if(first)first.remove();secList.appendChild(buildMsg(m))});
 }
@@ -360,7 +355,7 @@ function add(m){
   if(secList){const e=secList.querySelector('.pim-empty');if(e)e.remove();secList.prepend(buildMsg(m));
     while(secList.children.length>50)secList.lastChild.remove();}
   if(first){refreshAsk();return}
-  unread++;dot.dataset.unread=unread;
+  unread++;
   if(secBadge){secBadge.dataset.n=unread;secBadge.textContent=unread}
   const el=document.createElement('div');el.className='pim-toast';
   el.innerHTML='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div><div class="body">'+esc(m.body)+'</div>';
@@ -373,8 +368,7 @@ function add(m){
 }
 function connect(){
   const es=new EventSource('/notify/events');
-  es.onopen=()=>dot.className='on';
-  es.onerror=()=>{dot.className='off';es.close();setTimeout(connect,3000)};
+  es.onerror=()=>{es.close();setTimeout(connect,3000)};
   es.onmessage=e=>{add(JSON.parse(e.data));first=false};
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startWatch);else startWatch();
