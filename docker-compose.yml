@@ -17,9 +17,21 @@ services:
       - ./documents:/config/Documents
       - ./pictures:/config/Pictures
     ports:
-      - "3000:3000"        # 桌面 HTTP（文本剪贴板可用）
-      - "3001:3001"        # 桌面 HTTPS（贴图/文件传输需走此端口）
-      - "8787:8787"        # 消息推送页面 http://IP:8787（仅消息列表）
-      - "8443:8443"        # 消息推送 https://IP:8443（浏览器系统弹窗要走这个）
+      - "8787:8787"        # 通知中继 HTTP 直连入口（可选，走统一入口可不开）
     shm_size: "2gb"        # QQ 是 Electron 应用，shm 太小会闪退
     restart: unless-stopped
+
+  # 统一 HTTPS 入口：桌面和通知页面共用一个端口
+  #   https://IP:3001/        -> webtop 桌面（Selkies）
+  #   https://IP:3001/relay/  -> IM 通知中继（浏览器弹窗）
+  caddy:
+    image: caddy:2-alpine
+    container_name: pim-caddy
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+    restart: unless-stopped
+    depends_on:
+      - im-desktop

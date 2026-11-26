@@ -254,7 +254,8 @@ if(!window.isSecureContext){
 }
 document.getElementById('clear').onclick=()=>list.innerHTML=empty;
 function connect(){
-  const es=new EventSource('/events');
+  // 相对路径: 直连时解析为 /events, 经反代挂在 /relay/ 下时解析为 /relay/events
+  const es=new EventSource('events');
   es.onopen=()=>dot.className='on';
   es.onerror=()=>{dot.className='off';es.close();setTimeout(connect,3000)};
   es.onmessage=e=>add(JSON.parse(e.data));

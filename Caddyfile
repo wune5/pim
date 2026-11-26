@@ -1,0 +1,19 @@
+{
+	admin off
+}
+
+# 统一入口: 桌面(根路径) + IM 通知中继(/relay/)
+:3001 {
+	tls internal
+
+	# /relay -> /relay/ 归一化
+	redir /relay /relay/ 301
+
+	# IM 通知中继 (strip /relay 前缀转发给容器内 relay 的 HTTPS)
+	handle_path /relay/* {
+		reverse_proxy im-desktop:8443
+	}
+
+	# webtop 桌面 (Selkies, 自带 websocket 升级)
+	reverse_proxy im-desktop:3001
+}
