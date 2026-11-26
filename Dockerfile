@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # QQ / 微信 / 钉钉 桌面容器（amd64 + arm64），基于 LinuxServer webtop (Selkies)
-FROM lscr.io/linuxserver/webtop:ubuntu-kde
+FROM ghcr.io/linuxserver/webtop:ubuntu-kde
 
 ARG TARGETARCH
 
