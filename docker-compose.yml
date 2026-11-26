@@ -19,6 +19,7 @@ services:
     ports:
       - "3000:3000"        # 桌面 HTTP（文本剪贴板可用）
       - "3001:3001"        # 桌面 HTTPS（贴图/文件传输需走此端口）
-      - "8787:8787"        # 消息推送页面 http://IP:8787
+      - "8787:8787"        # 消息推送页面 http://IP:8787（仅消息列表）
+      - "8443:8443"        # 消息推送 https://IP:8443（浏览器系统弹窗要走这个）
     shm_size: "2gb"        # QQ 是 Electron 应用，shm 太小会闪退
     restart: unless-stopped

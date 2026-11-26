@@ -24,8 +24,9 @@ IM 通知中继：监听 Linux 桌面通知(DBus) -> 浏览器页面实时推送
 import glob
 import json
 import os
-import re
 import queue
+import re
+import ssl
 import subprocess
 import threading
 import time
@@ -34,10 +35,27 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("PORT", "8787"))
+TLS_PORT = int(os.environ.get("TLS_PORT", "8443"))
 NTFY_URL = os.environ.get("NTFY_URL", "").strip()   # 例: https://ntfy.sh/my-secret-topic
 MAX_KEEP = 200                                       # 页面保留的历史条数
 
 STRING_RE = re.compile(r'^\s*string "(.*)"\s*$')
+
+
+def ensure_tls_cert(certdir: str):
+    """生成自签名证书(存在则跳过)。浏览器弹窗 API 只在 HTTPS/localhost 下可用,
+    所以必须有一个 HTTPS 入口。"""
+    cert = os.path.join(certdir, "cert.pem")
+    key = os.path.join(certdir, "key.pem")
+    if os.path.exists(cert) and os.path.exists(key):
+        return cert, key
+    os.makedirs(certdir, exist_ok=True)
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", key, "-out", cert, "-days", "3650",
+         "-subj", "/CN=pim-notify-relay"],
+        capture_output=True, timeout=60, check=True)
+    return cert, key
 
 
 def unescape(s: str) -> str:
@@ -223,7 +241,17 @@ function add(m){
     try{new Notification(m.title,{body:m.body})}catch(e){}
   }
 }
-document.getElementById('enable').onclick=()=>Notification.requestPermission();
+document.getElementById('enable').onclick=()=>{
+  if(!window.isSecureContext){alert('当前是 HTTP 访问, 浏览器不允许弹系统通知。\n请改用 https://'+location.hostname+':8443 访问(首次打开点"高级→继续前往")。');return}
+  Notification.requestPermission();
+};
+if(!window.isSecureContext){
+  const tip=document.createElement('div');
+  tip.style.cssText='background:#fef3c7;color:#92400e;border:1px solid #fbbf24;border-radius:8px;padding:8px 12px;margin:0 12px;font-size:13px';
+  tip.textContent='提示: HTTP 页面只能看消息列表, 不能弹系统通知。要弹窗请用 https://'+location.hostname+':8443 访问。';
+  const main=document.querySelector('main');
+  main.parentNode.insertBefore(tip,main);
+}
 document.getElementById('clear').onclick=()=>list.innerHTML=empty;
 function connect(){
   const es=new EventSource('/events');
@@ -274,7 +302,23 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=dbus_loop, daemon=True).start()
-    print(f"IM 通知中继已启动: http://0.0.0.0:{PORT}")
+    print(f"IM 通知中继已启动: http://0.0.0.0:{PORT}", flush=True)
     if NTFY_URL:
-        print(f"ntfy 转发已开启: {NTFY_URL}")
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+        print(f"ntfy 转发已开启: {NTFY_URL}", flush=True)
+    # HTTP 入口(消息列表)放后台线程
+    threading.Thread(
+        target=ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever,
+        daemon=True).start()
+    # HTTPS 入口(浏览器弹窗 API 要求安全上下文)
+    try:
+        cert, key = ensure_tls_cert("/config/.config/notify-relay")
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert, key)
+        httpsd = ThreadingHTTPServer(("0.0.0.0", TLS_PORT), Handler)
+        httpsd.socket = ctx.wrap_socket(httpsd.socket, server_side=True)
+        print(f"HTTPS 已开启: https://0.0.0.0:{TLS_PORT} (浏览器弹窗走这个)", flush=True)
+        httpsd.serve_forever()
+    except Exception as e:
+        print(f"HTTPS 启动失败(弹窗功能不可用, 消息列表不受影响): {e}", flush=True)
+        while True:
+            time.sleep(3600)
