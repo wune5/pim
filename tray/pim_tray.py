@@ -57,6 +57,7 @@ state = {
     "connected": False,
     "paused": False,
     "unread": 0,
+    "blink_on": False,
 }
 state_lock = threading.Lock()
 
@@ -70,12 +71,16 @@ def _font(size):
 
 
 def make_icon():
-    """根据状态绘制托盘图标: 底色=连接状态, 右上角=未读角标"""
+    """根据状态绘制托盘图标: 未读时闪烁(橙高亮), 右上角未读角标"""
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     with state_lock:
-        connected, paused, unread = state["connected"], state["paused"], state["unread"]
-    if paused:
+        connected, paused = state["connected"], state["paused"]
+        unread, blink_on = state["unread"], state["blink_on"]
+    blinking = unread > 0 and not paused
+    if blinking and blink_on:
+        base_color = (251, 146, 60, 255)       # 橙: 闪烁高亮相
+    elif paused:
         base_color = (148, 163, 184, 255)      # 灰: 暂停
     elif connected:
         base_color = (34, 197, 94, 255)        # 绿: 在线
@@ -128,12 +133,17 @@ def notify(title, body):
 # ---------- 菜单动作 ----------
 
 def open_desktop(icon=None, item=None):
+    with state_lock:
+        state["unread"] = 0
+        state["blink_on"] = False
+    refresh_icon(ICON)
     webbrowser.open(SERVER + "/")
 
 
 def clear_unread(icon, item):
     with state_lock:
         state["unread"] = 0
+        state["blink_on"] = False
     refresh_icon(icon)
 
 
@@ -184,6 +194,25 @@ def handle(m, is_backlog):
 
 
 # ---------- SSE 连接循环 ----------
+
+def blink_loop():
+    """有未读时让图标闪烁(0.5s 相位切换), 点开或清除未读后停止"""
+    while True:
+        time.sleep(0.5)
+        with state_lock:
+            active = state["unread"] > 0 and not state["paused"]
+            if not active:
+                if state["blink_on"]:
+                    state["blink_on"] = False
+                    need_refresh = True
+                else:
+                    need_refresh = False
+            else:
+                state["blink_on"] = not state["blink_on"]
+                need_refresh = True
+        if need_refresh:
+            refresh_icon(ICON)
+
 
 def sse_loop():
     backoff = 2
@@ -244,4 +273,5 @@ if __name__ == "__main__":
                         break
         sys.exit(0)
     threading.Thread(target=sse_loop, daemon=True).start()
+    threading.Thread(target=blink_loop, daemon=True).start()
     ICON.run()
