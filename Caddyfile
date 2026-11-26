@@ -22,6 +22,16 @@
 		}
 	}
 
+	# 注入脚本与通知事件 (Selkies 桌面页面通过 /notify/inject.js 接入)
+	handle_path /notify/* {
+		reverse_proxy https://im-desktop:8443 {
+			transport http {
+				tls
+				tls_insecure_skip_verify
+			}
+		}
+	}
+
 	# webtop 桌面 (Selkies, 自带 websocket 升级)
 	# 删除 frame 限制头: /relay/ 通知页以 iframe 全屏嵌入桌面, 单页承载
 	reverse_proxy https://im-desktop:3001 {

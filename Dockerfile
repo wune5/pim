@@ -38,6 +38,10 @@ RUN patchelf --clear-execstack /opt/apps/com.alibabainc.dingtalk/files/*/dingtal
     && rm -f /opt/apps/com.alibabainc.dingtalk/files/*/libm.so.6 \
     && sed -i 's|Exec=/opt/QQ/qq %U|Exec=/opt/QQ/qq --no-sandbox %U|' /usr/share/applications/qq.desktop
 
+# 桌面页面注入 IM 通知脚本(/notify/inject.js): 桌面原生打开无 iframe 开销,
+# 页面内直接叠加 toast/系统通知, 由 /notify/ 路由(Caddy)转发到通知中继
+RUN sed -i 's|</body></html>|<script src="/notify/inject.js" defer></script></body></html>|' /usr/share/selkies/web/index.html
+
 # 启动时修复宿主机映射目录属主：bind mount 会保留宿主机 root 属主，
 # 而容器内应用以 abc 用户运行，QQ 会报"检测到当前存储路径不可访问"
 COPY pim-dirs-init/type /etc/s6-overlay/s6-rc.d/pim-dirs-init/type

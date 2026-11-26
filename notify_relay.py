@@ -285,6 +285,76 @@ connect();
 </script></body></html>"""
 
 
+# 注入到 Selkies 桌面页面的通知脚本(由 Dockerfile sed 写入 index.html)。
+# 不再用 iframe 包桌面 —— 桌面原生打开, 零性能开销, 通知层直接叠在桌面上。
+INJECT_JS = """(function(){
+if(window.__PIM_NOTIFY__)return;window.__PIM_NOTIFY__=1;
+const css=document.createElement('style');
+css.textContent=`#pim-dot{position:fixed;left:10px;bottom:10px;z-index:2147483000;width:12px;height:12px;border-radius:50%;background:#666;border:2px solid rgba(0,0,0,.35);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+#pim-dot.on{background:#22c55e}#pim-dot.off{background:#ef4444}
+#pim-ask{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483001;display:none;align-items:center;gap:10px;background:#fff;border:1px solid #e3e5e8;border-radius:10px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:14px;color:#333}
+#pim-ask button{border:0;background:#2563eb;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px}
+#pim-ask .x{cursor:pointer;color:#999;font-size:16px;padding:0 2px}
+#pim-toasts{position:fixed;right:14px;bottom:14px;z-index:2147483000;display:flex;flex-direction:column;gap:8px;max-width:360px}
+.pim-toast{background:#fff;border:1px solid #e3e5e8;border-radius:10px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,.18);animation:pim-slide .18s;cursor:pointer}
+.pim-toast .meta{font-size:12px;color:#888;display:flex;justify-content:space-between;gap:8px;margin-bottom:3px}
+.pim-toast .app{background:#eef1ff;color:#4152d8;border-radius:4px;padding:1px 8px;margin-right:8px}
+.pim-toast .title{font-weight:600;color:#222}
+.pim-toast .body{font-size:13px;color:#444;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:hidden}
+@keyframes pim-slide{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
+#pim-panel{position:fixed;left:0;bottom:0;z-index:2147483001;display:none;width:340px;max-height:60vh;overflow-y:auto;background:#fff;border-top:1px solid #e3e5e8;border-right:1px solid #e3e5e8;border-radius:0 12px 0 0;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+#pim-panel h2{font-size:14px;margin:0;padding:10px 14px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;color:#333}
+#pim-panel h2 span.x{cursor:pointer;color:#999;font-size:16px}
+#pim-panel .msg{padding:8px 14px;border-bottom:1px solid #f2f3f5;font-size:13px}
+#pim-panel .meta{font-size:12px;color:#888;margin-bottom:2px}
+#pim-panel .app{background:#eef1ff;color:#4152d8;border-radius:4px;padding:1px 6px;margin-right:8px}
+#pim-panel .title{font-weight:600;color:#222}
+#pim-panel .body{color:#444;white-space:pre-wrap;word-break:break-all}`;
+document.head.appendChild(css);
+const dot=document.createElement('span');dot.id='pim-dot';dot.className='off';dot.title='IM 通知连接状态, 点击查看最近消息';document.body.appendChild(dot);
+const toasts=document.createElement('div');toasts.id='pim-toasts';document.body.appendChild(toasts);
+const panel=document.createElement('div');panel.id='pim-panel';
+panel.innerHTML='<h2>最近消息<span class="x">✕</span></h2><div id="pim-plist"></div>';
+document.body.appendChild(panel);
+const plist=panel.querySelector('#pim-plist');
+dot.onclick=()=>panel.style.display=panel.style.display==='block'?'none':'block';
+panel.querySelector('.x').onclick=()=>panel.style.display='none';
+const ask=document.createElement('div');ask.id='pim-ask';
+ask.innerHTML='<span>开启桌面通知, 收到新消息时系统弹窗提醒</span><button>开启</button><span class="x">✕</span>';
+document.body.appendChild(ask);
+const askBtn=ask.querySelector('button');
+function refreshAsk(){ask.style.display=('Notification'in window&&Notification.permission==='default')?'flex':'none'}
+askBtn.onclick=async()=>{try{await Notification.requestPermission()}catch(e){}refreshAsk()};
+ask.querySelector('.x').onclick=()=>ask.style.display='none';
+refreshAsk();
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
+let first=true;
+function add(m){
+  const meta='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div>';
+  if(first){
+    const el=document.createElement('div');el.className='msg';
+    el.innerHTML=meta+'<div class="body">'+esc(m.body)+'</div>';
+    plist.prepend(el);return;
+  }
+  const el=document.createElement('div');el.className='pim-toast';
+  el.innerHTML=meta+'<div class="body">'+esc(m.body)+'</div>';
+  el.onclick=()=>el.remove();
+  toasts.appendChild(el);
+  setTimeout(()=>el.remove(),8000);
+  if('Notification'in window&&Notification.permission==='granted'){
+    try{new Notification(m.title||m.app,{body:(m.app?'['+m.app+'] ':'')+(m.body||'')})}catch(e){}
+  }
+}
+function connect(){
+  const es=new EventSource('/notify/events');
+  es.onopen=()=>dot.className='on';
+  es.onerror=()=>{dot.className='off';es.close();setTimeout(connect,3000)};
+  es.onmessage=e=>{add(JSON.parse(e.data));first=false};
+}
+connect();
+})();"""
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/events"):
@@ -310,6 +380,14 @@ class Handler(BaseHTTPRequestHandler):
                 with relay.lock:
                     if q in relay.clients:
                         relay.clients.remove(q)
+        elif self.path.startswith("/inject.js"):
+            body = INJECT_JS.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         else:
             body = PAGE.encode("utf-8")
             self.send_response(200)
