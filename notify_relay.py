@@ -341,7 +341,8 @@ function injectSidebar(){
     secList.style.display=open?'none':'flex';
     if(!open){unread=0;secBadge.dataset.n='0'}
   };
-  backlog.forEach(m=>{const first=secList.querySelector('.pim-empty');if(first)first.remove();secList.appendChild(buildMsg(m))});
+  // 侧栏列表最多显示 50 条, 与 add() 的裁剪逻辑一致
+  backlog.slice(-50).forEach(m=>{const first=secList.querySelector('.pim-empty');if(first)first.remove();secList.appendChild(buildMsg(m))});
 }
 // React 可能重渲染侧栏, 被移除时重新插入
 const mo=new MutationObserver(()=>injectSidebar());
