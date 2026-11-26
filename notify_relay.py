@@ -443,17 +443,18 @@ if __name__ == "__main__":
         target=ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever,
         daemon=True).start()
     # HTTPS 入口(浏览器弹窗 API 要求安全上下文)
-    try:
-        cert, key = ensure_tls_cert("/config/.config/notify-relay")
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(cert, key)
-        httpsd = ThreadingHTTPServer(("0.0.0.0", TLS_PORT), Handler)
-        httpsd.socket = ctx.wrap_socket(httpsd.socket, server_side=True)
-        print(f"HTTPS 已开启: https://0.0.0.0:{TLS_PORT} (浏览器弹窗走这个)", flush=True)
-        httpsd.serve_forever()
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"HTTPS 启动失败(弹窗功能不可用, 消息列表不受影响): {e}", flush=True)
-        while True:
-            time.sleep(3600)
+    # 失败自动重试: 容器启动早期可能有短暂竞态(挂载/端口未就绪), 不能一次失败就永久放弃
+    while True:
+        try:
+            cert, key = ensure_tls_cert("/config/.config/notify-relay")
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ctx.load_cert_chain(cert, key)
+            httpsd = ThreadingHTTPServer(("0.0.0.0", TLS_PORT), Handler)
+            httpsd.socket = ctx.wrap_socket(httpsd.socket, server_side=True)
+            print(f"HTTPS 已开启: https://0.0.0.0:{TLS_PORT} (浏览器弹窗走这个)", flush=True)
+            httpsd.serve_forever()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"HTTPS 启动失败({e}), 10 秒后重试 ...", flush=True)
+            time.sleep(10)
