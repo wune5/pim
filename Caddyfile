@@ -3,17 +3,30 @@
 }
 
 # 统一入口: 桌面(根路径) + IM 通知中继(/relay/)
+# TLS 证书: 部署时用 scripts/gen-cert.sh 生成(需含访问 IP 的 SAN),
+# Caddy 的 tls internal 内部 CA 不给裸 IP 签证书
+# 注意: 两个上游(webtop:3001 / relay:8443)自身都是 HTTPS, 需指定 https 传输
 :3001 {
-	tls internal
+	tls /certs/cert.pem /certs/key.pem
 
 	# /relay -> /relay/ 归一化
 	redir /relay /relay/ 301
 
 	# IM 通知中继 (strip /relay 前缀转发给容器内 relay 的 HTTPS)
 	handle_path /relay/* {
-		reverse_proxy im-desktop:8443
+		reverse_proxy https://im-desktop:8443 {
+			transport http {
+				tls
+				tls_insecure_skip_verify
+			}
+		}
 	}
 
 	# webtop 桌面 (Selkies, 自带 websocket 升级)
-	reverse_proxy im-desktop:3001
+	reverse_proxy https://im-desktop:3001 {
+		transport http {
+			tls
+			tls_insecure_skip_verify
+		}
+	}
 }

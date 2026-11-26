@@ -40,5 +40,5 @@ RUN patchelf --clear-execstack /opt/apps/com.alibabainc.dingtalk/files/*/dingtal
 
 # 通知中继：监听桌面通知 -> 浏览器页面推送（SSE，:8787）
 COPY notify_relay.py /opt/notify_relay.py
-RUN printf '[Desktop Entry]\nType=Application\nName=notify-relay\nComment=IM desktop notification relay\nExec=python3 /opt/notify_relay.py\nTerminal=false\nX-GNOME-Autostart-enabled=true\n' > /etc/xdg/autostart/notify-relay.desktop \
+RUN printf '[Desktop Entry]\nType=Application\nName=notify-relay\nComment=IM desktop notification relay\nExec=/lsiopy/bin/python3 /opt/notify_relay.py\nTerminal=false\nX-GNOME-Autostart-enabled=true\n' > /etc/xdg/autostart/notify-relay.desktop \
     && printf '[Desktop Entry]\nType=Application\nName=notify-relay\nExec=python3 /opt/notify_relay.py\nTerminal=false\n' > /usr/share/applications/notify-relay.desktop
