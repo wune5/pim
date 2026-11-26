@@ -452,6 +452,8 @@ if __name__ == "__main__":
         print(f"HTTPS 已开启: https://0.0.0.0:{TLS_PORT} (浏览器弹窗走这个)", flush=True)
         httpsd.serve_forever()
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"HTTPS 启动失败(弹窗功能不可用, 消息列表不受影响): {e}", flush=True)
         while True:
             time.sleep(3600)
