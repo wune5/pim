@@ -248,9 +248,7 @@ const toasts=document.getElementById('toasts'),panel=document.getElementById('pa
 // 经 caddy 的 /relay/ 打开时嵌同源桌面; 直连 relay(8443/8787 根路径)时嵌统一入口桌面
 desk.src = /\\/relay\\/?$/.test(location.pathname) ? '/' : location.protocol+'//'+location.hostname+':3001/';
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
-let first=true;
-function show(m,alert){
-  const meta='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div>';
+function show(m,alert){  const meta='<div class="meta"><span><span class="app">'+esc(m.app)+'</span><span class="title">'+esc(m.title)+'</span></span><span>'+esc(m.ts)+'</span></div>';
   if(alert){
     const el=document.createElement('div');el.className='toast';
     el.innerHTML=meta+'<div class="body">'+esc(m.body)+'</div>';
@@ -266,7 +264,6 @@ function show(m,alert){
     plist.prepend(el);
   }
 }
-function add(m){show(m,!first)}
 dot.onclick=()=>panel.style.display=panel.style.display==='block'?'none':'block';
 document.getElementById('px').onclick=()=>panel.style.display='none';
 const ask=document.getElementById('ask');
@@ -279,7 +276,9 @@ function connect(){
   const es=new EventSource('events');
   es.onopen=()=>dot.className='on';
   es.onerror=()=>{dot.className='off';es.close();setTimeout(connect,3000)};
-  es.onmessage=e=>{add(JSON.parse(e.data));first=false};
+  // 历史消息(backlog)只入列表; 实时消息才 toast + 系统通知
+  es.addEventListener('backlog',e=>show(JSON.parse(e.data),false));
+  es.onmessage=e=>show(JSON.parse(e.data),true);
 }
 connect();
 </script></body></html>"""
@@ -348,13 +347,13 @@ function injectSidebar(){
 const mo=new MutationObserver(()=>injectSidebar());
 function startWatch(){mo.observe(document.body,{childList:true,subtree:true});injectSidebar()}
 // ---- toast / 系统通知 / 未读计数 ----
-let first=true;
+// quiet=true 为历史消息(backlog): 只入侧栏列表, 不弹提醒不计未读
 const backlog=[];
-function add(m){
+function add(m,quiet){
   backlog.push(m);if(backlog.length>100)backlog.shift();
   if(secList){const e=secList.querySelector('.pim-empty');if(e)e.remove();secList.prepend(buildMsg(m));
     while(secList.children.length>50)secList.lastChild.remove();}
-  if(first){refreshAsk();return}
+  if(quiet)return;
   unread++;
   if(secBadge){secBadge.dataset.n=unread;secBadge.textContent=unread}
   const el=document.createElement('div');el.className='pim-toast';
@@ -368,8 +367,9 @@ function add(m){
 }
 function connect(){
   const es=new EventSource('/notify/events');
+  es.addEventListener('backlog',e=>add(JSON.parse(e.data),true));
   es.onerror=()=>{es.close();setTimeout(connect,3000)};
-  es.onmessage=e=>{add(JSON.parse(e.data));first=false};
+  es.onmessage=e=>add(JSON.parse(e.data));
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startWatch);else startWatch();
 connect();
@@ -388,8 +388,10 @@ class Handler(BaseHTTPRequestHandler):
             with relay.lock:
                 relay.clients.append(q)
             try:
+                # 历史消息用命名事件 backlog, 客户端只入列表不弹提醒;
+                # 实时消息走默认 message 事件
                 for m in relay.backlog():
-                    self.wfile.write(f"data: {json.dumps(m, ensure_ascii=False)}\n\n".encode("utf-8"))
+                    self.wfile.write(f"event: backlog\ndata: {json.dumps(m, ensure_ascii=False)}\n\n".encode("utf-8"))
                 self.wfile.flush()
                 while True:
                     m = q.get()
