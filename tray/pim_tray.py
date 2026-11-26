@@ -145,6 +145,18 @@ def refresh_icon(icon):
 
 # ---------- 系统通知 ----------
 
+LOG_PATH = os.path.join(BASE, "tray.log")
+
+
+def log(msg):
+    """诊断日志: 连接/事件/通知全记录, 排查托盘没反应用"""
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write("%s %s\n" % (time.strftime("%H:%M:%S"), msg))
+    except Exception:
+        pass
+
+
 def notify(title, body):
     try:
         if sys.platform == "win32":
@@ -152,6 +164,7 @@ def notify(title, body):
             n = Notification(app_id="pim", title=title or "新消息", msg=body or "")
             n.set_audio(audio.Silent, loop=False)
             n.show()
+            log("toast OK: %s | %s" % (title, (body or "")[:30]))
         elif sys.platform == "darwin":
             script = 'display notification "{}" with title "{}"'.format(
                 (body or "").replace('"', '\\"'), (title or "新消息").replace('"', '\\"'))
@@ -159,7 +172,7 @@ def notify(title, body):
         else:
             subprocess.Popen(["notify-send", title or "新消息", body or ""])
     except Exception as e:
-        print("notify error:", e)
+        log("notify ERROR: %r" % e)
 
 
 # ---------- 菜单动作 ----------
@@ -226,6 +239,9 @@ def handle(m, is_backlog):
                    (("[%s] " % m["app"]) if m.get("app") else "") + (m.get("body") or ""))
             with state_lock:
                 state["unread"] += 1
+        else:
+            log("realtime msg skipped (paused)")
+    log("handled: backlog=%s paused=%s unread=%d" % (is_backlog, paused, state["unread"]))
     refresh_icon(ICON)
 
 
@@ -252,6 +268,7 @@ def blink_loop():
 
 def sse_loop():
     backoff = 2
+    log("sse_loop start -> %s" % EVENTS_URL)
     while True:
         try:
             with requests.get(EVENTS_URL, stream=True, verify=VERIFY_TLS, timeout=(5, None)) as r:
@@ -259,6 +276,7 @@ def sse_loop():
                 backoff = 2
                 with state_lock:
                     state["connected"] = True
+                log("SSE connected HTTP %d" % r.status_code)
                 refresh_icon(ICON)
                 event = "message"
                 for line in r.iter_lines(decode_unicode=True):
@@ -275,11 +293,13 @@ def sse_loop():
                             m = json.loads(line[5:].strip())
                         except ValueError:
                             continue
+                        log("event %s: %s %s | %s" % (event, m.get("app"), m.get("title"), (m.get("body") or "")[:20]))
                         handle(m, is_backlog=(event == "backlog"))
         except Exception as e:
             with state_lock:
                 state["connected"] = False
             refresh_icon(ICON)
+            log("SSE error: %r; retry in %ds" % (e, backoff))
             time.sleep(backoff)
             backoff = min(backoff * 2, 60)
 
