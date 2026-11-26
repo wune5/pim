@@ -49,9 +49,11 @@ RUN patchelf --clear-execstack /opt/apps/com.alibabainc.dingtalk/files/*/dingtal
 # 页面内直接叠加 toast/系统通知, 由 /notify/ 路由(Caddy)转发到通知中继
 # Selkies 默认 60fps 软编全屏扛不住(CPU 延迟堆积报"网络连接不佳"); 帧率用
 # "30-30" 范围语法锁死 —— 单值 30 只作初始值会被浏览器端设置覆盖
-# index.html 位置随 selkies 版本变化(旧版 /usr/share/selkies/web, 新版 pip 包内), 动态查找
-RUN f=$(find /usr/share/selkies /lsiopy -name index.html -path "*selkies_web*" 2>/dev/null | head -1) \
-    && sed -i 's|</body></html>|<script src="/notify/inject.js" defer></script></body></html>|' "$f" \
+# index.html 有多份且实际服务的取决于版本(nginx 服务 /usr/share/selkies/web,
+# 或 pip 包内 selkies_web)——全部注入, 宁多勿漏
+RUN for f in $(find /usr/share/selkies /lsiopy -name index.html -path "*selkies*" 2>/dev/null); do \
+        sed -i 's|</body></html>|<script src="/notify/inject.js" defer></script></body></html>|' "$f"; \
+    done \
     && sed -i 's|--addr="localhost"|--addr="localhost" --framerate="30-30"|' /etc/s6-overlay/s6-rc.d/svc-selkies/run
 
 # 启动时修复宿主机映射目录属主：bind mount 会保留宿主机 root 属主，
