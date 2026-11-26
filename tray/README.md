@@ -14,10 +14,10 @@
 
 ```bash
 pip install -r requirements.txt
-python pim_tray.py
+python pim_tray.py        # 或 Windows 下双击 start_tray.vbs(无控制台窗口)
 ```
 
-首次运行会在脚本目录生成 `config.json`，按需修改：
+首次运行会在脚本目录生成 `config.json`（可从 `config.example.json` 复制修改）：
 
 ```json
 {

@@ -103,10 +103,15 @@ def make_icon():
     return img
 
 
+# pystray 的 Icon 没有 update() 方法 —— 直接给 icon.icon 赋值即触发重绘;
+# 多线程(SSE/闪烁)并发赋值需串行化, 否则 win32 后端可能竞态
+icon_lock = threading.Lock()
+
+
 def refresh_icon(icon):
     try:
-        icon.icon = make_icon()
-        icon.update()
+        with icon_lock:
+            icon.icon = make_icon()
     except Exception:
         pass
 
@@ -253,6 +258,12 @@ def sse_loop():
 ICON = pystray.Icon("pim", make_icon(), "pim 消息提醒", build_menu())
 
 if __name__ == "__main__":
+    # 原生级崩溃(pythonw 无控制台)落盘, 便于排查
+    try:
+        import faulthandler
+        faulthandler.enable(open(os.path.join(BASE, "tray_crash.log"), "w"))
+    except Exception:
+        pass
     if "--test-once" in sys.argv:
         # 无界面测试: 连上后打印事件流前几条即退出
         with requests.get(EVENTS_URL, stream=True, verify=VERIFY_TLS, timeout=(5, 10)) as r:
