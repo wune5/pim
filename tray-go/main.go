@@ -29,7 +29,6 @@ import (
 	"sync"
 	"time"
 
-	"fyne.io/systray"
 	"github.com/gen2brain/beeep"
 )
 
@@ -123,87 +122,7 @@ func main() {
 		return
 	}
 	logf("=== pim-tray (go) start, server=%s ===", cfg.Server)
-	systray.Run(onReady, onExit)
-}
-
-func onReady() {
-	systray.SetIcon(drawIcon())
-	systray.SetTooltip("pim 消息提醒")
-	systray.SetTitle("pim")
-
-	mStatus := systray.AddMenuItem("", "")
-	mStatus.Disable()
-	mUnread := systray.AddMenuItem("", "")
-	mUnread.Disable()
-	systray.AddSeparator()
-	mOpen := systray.AddMenuItem("打开网页桌面", "在浏览器打开 pim 桌面")
-	mPause := systray.AddMenuItem("暂停提醒", "暂停/恢复系统通知")
-	mClear := systray.AddMenuItem("清除未读", "清除未读计数并停止闪烁")
-	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("退出", "退出托盘程序")
-
-	refreshUI := func() {
-		st.mu.Lock()
-		connected, paused, unread := st.connected, st.paused, st.unread
-		st.mu.Unlock()
-		status := "已暂停"
-		switch {
-		case paused:
-		case connected:
-			status = "已连接 " + cfg.Server
-		default:
-			status = "连接断开, 重试中…"
-		}
-		mStatus.SetTitle("状态: " + status)
-		if unread > 0 {
-			mUnread.SetTitle(fmt.Sprintf("未读: %d", unread))
-		} else {
-			mUnread.SetTitle("无未读")
-		}
-		if paused {
-			mPause.SetTitle("恢复提醒")
-		} else {
-			mPause.SetTitle("暂停提醒")
-		}
-		systray.SetIcon(drawIcon())
-		systray.SetTooltip(buildTooltip())
-	}
-	refreshUI()
-
-	go func() {
-		for range time.Tick(500 * time.Millisecond) {
-			st.mu.Lock()
-			active := st.unread > 0 && !st.paused && st.connected
-			if active {
-				st.blinkOn = !st.blinkOn
-			} else if st.blinkOn {
-				st.blinkOn = false
-			}
-			need := active || st.blinkOn
-			st.mu.Unlock()
-			if need {
-				refreshUI()
-			}
-		}
-	}()
-
-	go func() { <-mOpen.ClickedCh; clearUnread(); openURL(serverURL + "/") }()
-	go func() { <-mPause.ClickedCh; st.mu.Lock(); st.paused = !st.paused; st.mu.Unlock(); refreshUI() }()
-	go func() { <-mClear.ClickedCh; clearUnread(); refreshUI() }()
-	go func() { <-mQuit.ClickedCh; systray.Quit() }()
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logf("sse PANIC: %v", r)
-			}
-		}()
-		sseLoop(refreshUI)
-	}()
-}
-
-func onExit() {
-	logf("tray exit")
+	uiRun(onReady)
 }
 
 func clearUnread() {
@@ -211,6 +130,7 @@ func clearUnread() {
 	st.unread = 0
 	st.blinkOn = false
 	st.mu.Unlock()
+	cardRefreshUI()
 }
 
 // ---------- 消息处理 ----------
@@ -247,6 +167,7 @@ func handle(m Message, backlog bool) {
 		st.mu.Unlock()
 	}
 	logf("handled: backlog=%v paused=%v unread=%d", backlog, paused, unreadLocked())
+	cardRefreshUI()
 }
 
 func unreadLocked() int {
