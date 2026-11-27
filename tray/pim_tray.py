@@ -83,15 +83,15 @@ def make_icon():
     with state_lock:
         connected, paused = state["connected"], state["paused"]
         unread, blink_on = state["unread"], state["blink_on"]
-    blinking = unread > 0 and not paused
+    blinking = unread > 0 and not paused and connected
     if blinking and blink_on:
         base_color = (251, 146, 60, 255)       # 橙: 闪烁高亮相
+    elif not connected:
+        base_color = (75, 85, 99, 255)         # 暗灰: 连接断开
     elif paused:
-        base_color = (148, 163, 184, 255)      # 灰: 暂停
-    elif connected:
-        base_color = (34, 197, 94, 255)        # 绿: 在线
+        base_color = (148, 163, 184, 255)      # 浅灰: 暂停
     else:
-        base_color = (239, 68, 68, 255)        # 红: 断线
+        base_color = (34, 197, 94, 255)        # 绿: 在线
     d.rounded_rectangle([4, 8, 60, 60], radius=14, fill=base_color)
     f = _font(34)
     tb = d.textbbox((0, 0), "P", font=f)
