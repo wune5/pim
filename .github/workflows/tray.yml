@@ -21,9 +21,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force ../dist | Out-Null
-          go build -ldflags "-s -w" -o ../dist/pim-tray-windows-amd64.exe .
+          go build -ldflags "-s -w -H=windowsgui" -o ../dist/pim-tray-windows-amd64.exe .
           $env:GOARCH = "arm64"
-          go build -ldflags "-s -w" -o ../dist/pim-tray-windows-arm64.exe .
+          go build -ldflags "-s -w -H=windowsgui" -o ../dist/pim-tray-windows-arm64.exe .
       - uses: actions/upload-artifact@v4
         with:
           name: pim-tray-windows
