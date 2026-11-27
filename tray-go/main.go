@@ -192,7 +192,14 @@ func onReady() {
 	go func() { <-mClear.ClickedCh; clearUnread(); refreshUI() }()
 	go func() { <-mQuit.ClickedCh; systray.Quit() }()
 
-	go sseLoop(refreshUI)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logf("sse PANIC: %v", r)
+			}
+		}()
+		sseLoop(refreshUI)
+	}()
 }
 
 func onExit() {
@@ -234,11 +241,7 @@ func handle(m Message, backlog bool) {
 		if title == "" {
 			title = "新消息"
 		}
-		body := m.Body
-		if m.App != "" {
-			body = "[" + m.App + "] " + body
-		}
-		go notify(title, body)
+		go notify(m.App, title, m.Body)
 		st.mu.Lock()
 		st.unread++
 		st.mu.Unlock()
@@ -254,11 +257,26 @@ func unreadLocked() int {
 
 // ---------- 系统通知 ----------
 
-func notify(title, body string) {
+// notify 弹系统通知; app 作为来源应用名显示(Windows toast 头部/通知中心分组)
+var notifyMu sync.Mutex
+
+func notify(app, title, body string) {
+	defer func() {
+		if r := recover(); r != nil {
+			logf("notify PANIC: %v", r)
+		}
+	}()
+	if app == "" {
+		app = "pim"
+	}
+	// beeep.AppName 是全局变量, 并发弹通知时可能串台, 串行化
+	notifyMu.Lock()
+	defer notifyMu.Unlock()
+	beeep.AppName = app
 	if err := beeep.Notify(title, body, ""); err != nil {
 		logf("notify ERROR: %v", err)
 	} else {
-		logf("toast OK: %s | %s", title, clip(body, 30))
+		logf("toast OK: [%s] %s | %s", app, title, clip(body, 30))
 	}
 }
 
