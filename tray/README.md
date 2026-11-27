@@ -38,5 +38,5 @@ python pim_tray.py --test-once
 ## 开机自启（可选）
 
 - **Windows**：`Win+R` 运行 `shell:startup`，把 `pim_tray.py` 的快捷方式放进去
-  （目标形如 `pythonw.exe D:\path\to\pim_tray.py`，用 pythonw 不弹控制台窗口）
+  （目标形如 `python.exe D:\path\to\pim_tray.py`；注意个别机器上 pythonw 的网络连接会被代理软件/安全软件拦杀(PermissionError 13)，启动器 start_tray.vbs 已改用 python.exe 并隐藏窗口）
 - **macOS**：系统设置 → 通用 → 登录项，添加一个运行本脚本的 Automator 应用或 shell 包装
