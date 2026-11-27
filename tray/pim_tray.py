@@ -51,6 +51,11 @@ if not VERIFY_TLS:
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# 局域网直连: requests 在 Windows 上默认读注册表系统代理, 开着代理软件时
+# LAN 请求会被代理拦截(Permission denied), 一律强制绕开
+SESSION = requests.Session()
+SESSION.trust_env = False
+
 # ---------- 状态 ----------
 
 state = {
@@ -271,7 +276,7 @@ def sse_loop():
     log("sse_loop start -> %s" % EVENTS_URL)
     while True:
         try:
-            with requests.get(EVENTS_URL, stream=True, verify=VERIFY_TLS, timeout=(5, None)) as r:
+            with SESSION.get(EVENTS_URL, stream=True, verify=VERIFY_TLS, timeout=(5, None)) as r:
                 r.raise_for_status()
                 backoff = 2
                 with state_lock:
@@ -317,7 +322,7 @@ if __name__ == "__main__":
         pass
     if "--test-once" in sys.argv:
         # 无界面测试: 连上后打印事件流前几条即退出
-        with requests.get(EVENTS_URL, stream=True, verify=VERIFY_TLS, timeout=(5, 10)) as r:
+        with SESSION.get(EVENTS_URL, stream=True, verify=VERIFY_TLS, timeout=(5, 10)) as r:
             print("HTTP", r.status_code)
             n = 0
             event = "message"
