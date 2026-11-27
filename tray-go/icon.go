@@ -4,9 +4,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"image"
 	"image/color"
 	"image/png"
+	"runtime"
 )
 
 // 5x7 位图字体(所需字符: P 0-9 +)
@@ -34,7 +36,9 @@ var (
 	cWhite     = color.RGBA{255, 255, 255, 255}
 )
 
-// drawIcon 根据当前状态绘制托盘图标 PNG 字节
+// drawIcon 根据当前状态绘制托盘图标字节
+// Windows 上 systray 用 LoadImage 加载, 只认 .ico —— 包一层 ICO 容器
+// (Vista+ 支持 PNG-in-ICO); 其他平台直接给 PNG
 func drawIcon() []byte {
 	st.mu.Lock()
 	connected, paused, unread, blinkOn := st.connected, st.paused, st.unread, st.blinkOn
@@ -70,7 +74,26 @@ func drawIcon() []byte {
 	if err := png.Encode(&buf, img); err != nil {
 		return nil
 	}
+	if runtime.GOOS == "windows" {
+		return icoFromPNG(buf.Bytes())
+	}
 	return buf.Bytes()
+}
+
+// icoFromPNG 把 PNG 字节包装为单图标的 ICO 容器
+func icoFromPNG(png []byte) []byte {
+	buf := make([]byte, 22+len(png))
+	// ICONDIR: reserved=0, type=1(icon), count=1
+	buf[2], buf[4] = 1, 1
+	// ICONDIRENTRY
+	e := buf[6:22]
+	e[0], e[1] = 64, 64 // 宽高 (0 表示 256, 这里 64)
+	e[4], e[5] = 1, 0   // planes
+	e[6], e[7] = 32, 0  // bpp
+	binary.LittleEndian.PutUint32(e[8:], uint32(len(png)))
+	binary.LittleEndian.PutUint32(e[12:], 22)
+	copy(buf[22:], png)
+	return buf
 }
 
 // roundedRect 圆角矩形(左上/右下角坐标 + 圆角半径)
