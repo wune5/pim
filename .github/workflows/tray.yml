@@ -58,7 +58,7 @@ jobs:
         working-directory: tray-go
         run: |
           mkdir -p ../dist
-          go build -ldflags "-s -w" -o ../dist/pim-tray-darwin-amd64 .
+          GOARCH=amd64 go build -ldflags "-s -w" -o ../dist/pim-tray-darwin-amd64 .
           GOARCH=arm64 go build -ldflags "-s -w" -o ../dist/pim-tray-darwin-arm64 .
           lipo -create ../dist/pim-tray-darwin-amd64 ../dist/pim-tray-darwin-arm64 -output ../dist/pim-tray-darwin-universal
           rm ../dist/pim-tray-darwin-amd64 ../dist/pim-tray-darwin-arm64
